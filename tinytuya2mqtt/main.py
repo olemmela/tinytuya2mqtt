@@ -45,15 +45,15 @@ class Device:
     status_time: int
     tuya: tinytuya.OutletDevice = dataclasses.field(default=None)
 
-    def __init__(self, id, config):
+    def __init__(self, id, config, status_interval = 300, hb_interval = 20):
         self.id = id
         self.name = config['name']
         self.key = config['key']
         self.mac = config['mac']
         self.ip = config['ip']
-        self.hb_interval = 20
+        self.hb_interval = hb_interval
         self.hb_time = time.time() + self.hb_interval
-        self.status_interval = 300
+        self.status_interval = status_interval
         self.status_time = time.time() + self.status_interval
 
     def connect(self):
@@ -249,7 +249,7 @@ class SocketDevice(Device):
         self.refresh_time = time.time() + self.refresh_interval
         self.last_energy = time.time()
         self.last_energy_report = time.time()
-        super().__init__(id, config)
+        super().__init__(id, config, 60)
 
     def send_heartbeat(self):
         if self.refresh_time <= time.time():
