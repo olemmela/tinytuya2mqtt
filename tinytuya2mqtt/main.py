@@ -233,6 +233,136 @@ class FanWithLightDevice(FanDevice):
 
         return msgs
 
+class SocketDevice(Device):
+    dps_state = 1
+    dps_current = 18
+    dps_power = 19
+    dps_voltage = 20
+    refresh_interval = 5
+    total_energy = 0
+    last_energy = 0
+    last_energy_report = 0
+
+    def __init__(self, id, config):
+        self.manufacturer = "Aubess"
+        self.model = "Smart Socket"
+        self.refresh_time = time.time() + self.refresh_interval
+        self.last_energy = time.time()
+        self.last_energy_report = time.time()
+        super().__init__(id, config)
+
+    def send_heartbeat(self):
+        if self.refresh_time <= time.time():
+            payload = self.tuya.generate_payload(tinytuya.UPDATEDPS,[self.dps_current,self.dps_power,self.dps_voltage])
+            logger.debug('Refresh %s energy info', self.name)
+            self.tuya.send(payload)
+            self.refresh_time = time.time() + self.refresh_interval
+        else:
+            super().send_heartbeat()
+
+    def ha_config(self):
+        switch = {
+            'config': {
+                'name': self.name,
+                'unique_id': self.id,
+                'availability_topic': f'home/{self.id}/online',
+                'state_topic': f'home/{self.id}/switch/state',
+                'command_topic': f'home/{self.id}/switch/command',
+                'device': self.get_ha_device()
+            },
+            'topic': f'homeassistant/switch/{self.id}/config'
+        }
+        energy = {
+            'config': {
+                'name': self.name + ' Energy',
+                'unique_id': self.id + '_energy_total',
+                'state_topic': f'home/{self.id}/sensor/energy_total',
+                'state_class': 'total_increasing',
+                'device_class': 'energy',
+                'unit_of_measurement': 'Wh',
+                'device': self.get_ha_device()
+            },
+            'topic': f'homeassistant/sensor/{self.id}/energy_total/config'
+        }
+        current = {
+            'config': {
+                'name': self.name + ' Current',
+                'unique_id': self.id + '_current',
+                'state_topic': f'home/{self.id}/sensor/current',
+                'device_class': 'current',
+                'unit_of_measurement': 'mA',
+                'device': self.get_ha_device()
+            },
+            'topic': f'homeassistant/sensor/{self.id}/current/config'
+        }
+        power = {
+            'config': {
+                'name': self.name + ' Power',
+                'unique_id': self.id + '_power',
+                'state_topic': f'home/{self.id}/sensor/power',
+                'device_class': 'power',
+                'unit_of_measurement': 'W',
+                'icon': 'mdi:flash',
+                'device': self.get_ha_device()
+            },
+            'topic': f'homeassistant/sensor/{self.id}/power/config'
+        }
+        voltage = {
+            'config': {
+                'name': self.name + ' Voltage',
+                'unique_id': self.id + '_voltate',
+                'state_topic': f'home/{self.id}/sensor/voltage',
+                'device_class': 'voltage',
+                'unit_of_measurement': 'V',
+                'device': self.get_ha_device()
+            },
+            'topic': f'homeassistant/sensor/{self.id}/voltage/config'
+        }
+        return [ switch, energy, current, power, voltage ]
+
+    def get_topics(self):
+        topics = []
+        topics.append(f'home/{self.id}/switch/command')
+        return topics
+
+    def handle_msg(self, msg):
+        # Relay state
+        if msg.topic.endswith('/switch/command'):
+            dps = self.dps_state
+            val = bool(msg.payload == b'ON')
+
+            logger.debug('Setting %s to %s', dps, val)
+            self.tuya.set_value(dps, val, True)
+
+        return { dps: val }
+
+    def calculate_power_usage(self, power):
+        curtime = time.time()
+        timediff = curtime-self.last_energy
+        self.last_energy = curtime
+        if timediff < 60:
+            self.total_energy += timediff*power/3600
+        if curtime > (self.last_energy_report + 30):
+            self.last_energy_report = curtime
+            return True
+        return False
+
+    def parse_status(self, status):
+        msgs = []
+        if self.dps_state in status:
+            msgs.append((f'home/{self.id}/switch/state', 'ON' if status[self.dps_state] else 'OFF'))
+        if self.dps_current in status:
+            msgs.append((f'home/{self.id}/sensor/current', status[self.dps_current]))
+        if self.dps_power in status:
+            power = status[self.dps_power]/10
+            if self.calculate_power_usage(power):
+                msgs.append((f'home/{self.id}/sensor/energy_total', round(self.total_energy, 2)))
+            msgs.append((f'home/{self.id}/sensor/power', power))
+        if self.dps_voltage in status:
+            msgs.append((f'home/{self.id}/sensor/voltage', status[self.dps_voltage]/10))
+
+        return msgs
+
 
 class ClimateDevice(Device):
     climate_state = 1
@@ -356,6 +486,8 @@ def read_config() -> List[Device]:
                     devices[device_id] = FanDevice(device_id, dict(cfg.items(section)))
                 if type == 'fanwlight':
                     devices[device_id] = FanWithLightDevice(device_id, dict(cfg.items(section)))
+                if type == 'socket':
+                    devices[device_id] = SocketDevice(device_id, dict(cfg.items(section)))
 
             elif parts[0] == 'broker':
                 global MQTT_BROKER,MQTT_USERNAME,MQTT_PASSWORD  # pylint: disable=global-statement
