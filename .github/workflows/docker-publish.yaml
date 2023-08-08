@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - '*'
+    branches:
+      - 'socket'
 
 permissions:
   packages: write
@@ -38,7 +40,7 @@ jobs:
         with:
           # List of Docker images to use as base name for tags
           images: |
-            ghcr.io/mafrosis/tinytuya2mqtt
+            ghcr.io/olemmela/tinytuya2mqtt
           # Docker tags based on the following events/attributes
           tags: |
             type=schedule
@@ -53,6 +55,6 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/arm64,linux/amd64,linux/arm/v7
+          platforms: linux/arm64,linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
