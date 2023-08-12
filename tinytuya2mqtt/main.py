@@ -289,6 +289,7 @@ class SocketDevice(Device):
                 'name': self.name + ' Current',
                 'unique_id': self.id + '_current',
                 'state_topic': f'home/{self.id}/sensor/current',
+                'state_class': 'measurement',
                 'device_class': 'current',
                 'unit_of_measurement': 'mA',
                 'device': self.get_ha_device()
@@ -300,6 +301,7 @@ class SocketDevice(Device):
                 'name': self.name + ' Power',
                 'unique_id': self.id + '_power',
                 'state_topic': f'home/{self.id}/sensor/power',
+                'state_class': 'measurement',
                 'device_class': 'power',
                 'unit_of_measurement': 'W',
                 'icon': 'mdi:flash',
@@ -312,6 +314,7 @@ class SocketDevice(Device):
                 'name': self.name + ' Voltage',
                 'unique_id': self.id + '_voltate',
                 'state_topic': f'home/{self.id}/sensor/voltage',
+                'state_class': 'measurement',
                 'device_class': 'voltage',
                 'unit_of_measurement': 'V',
                 'device': self.get_ha_device()
