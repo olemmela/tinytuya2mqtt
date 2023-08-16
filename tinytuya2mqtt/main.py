@@ -529,7 +529,7 @@ def on_connect(client, userdata, _1, _2):
         logger.info('Subscribed to %s', command_topic)
 
 
-def on_message(_, userdata: dict, msg: bytes):
+def on_message(client, userdata: dict, msg: bytes):
     '''
     On command message received, take some action
 
@@ -546,7 +546,7 @@ def on_message(_, userdata: dict, msg: bytes):
 
     status = device.handle_msg(msg)
     # Immediately publish status back to HA
-    read_and_publish_status(userdata['device'], status)
+    read_and_publish_status(client, userdata['device'], status)
 
 
 def poll(device: Device):
@@ -569,20 +569,20 @@ def poll(device: Device):
     client.connect(MQTT_BROKER)
     client.loop_start()
 
-    read_and_publish_status(device, device.poll_status())
+    read_and_publish_status(client, device, device.poll_status())
 
     try:
         while True:
             device.send_heartbeat()
             data = device.tuya.receive()
             if data:
-                read_and_publish_status(device, data.get('dps'))
+                read_and_publish_status(client, device, data.get('dps'))
     finally:
         client.loop_stop()
         logger.info('fin')
 
 
-def read_and_publish_status(device: Device, status: dict):
+def read_and_publish_status(client, device: Device, status: dict):
     '''
     Fetch device current status and publish on MQTT
 
@@ -594,15 +594,11 @@ def read_and_publish_status(device: Device, status: dict):
         logger.error('Failed getting device status %s', device.id)
         return
 
+    client.publish('home/{device.id}/online','online')
+
     # Make all keys integers, for convenience compat with Device.dps integers
     status = {int(k):v for k,v in status.items()}
-
-    msgs = [
-        (f'home/{device.id}/online', 'online')
-    ]
-
     for msg in device.parse_status(status):
-        msgs.append(msg)
+        logger.debug('PUBLISH: %s', msg)
+        client.publish(msg[0], msg[1])
 
-    logger.debug('PUBLISH: %s', msgs)
-    publish.multiple(msgs, hostname=MQTT_BROKER, auth={'username':MQTT_USERNAME, 'password':MQTT_PASSWORD})
