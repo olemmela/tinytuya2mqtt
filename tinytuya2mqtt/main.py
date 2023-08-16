@@ -3,6 +3,7 @@ import dataclasses
 import json
 import logging
 import os
+import signal
 import sys
 import threading
 import time
@@ -276,6 +277,7 @@ class SocketDevice(Device):
             'config': {
                 'name': self.name + ' Energy',
                 'unique_id': self.id + '_energy_total',
+                'availability_topic': f'home/{self.id}/online',
                 'state_topic': f'home/{self.id}/sensor/energy_total',
                 'state_class': 'total_increasing',
                 'device_class': 'energy',
@@ -288,6 +290,7 @@ class SocketDevice(Device):
             'config': {
                 'name': self.name + ' Current',
                 'unique_id': self.id + '_current',
+                'availability_topic': f'home/{self.id}/online',
                 'state_topic': f'home/{self.id}/sensor/current',
                 'state_class': 'measurement',
                 'device_class': 'current',
@@ -300,6 +303,7 @@ class SocketDevice(Device):
             'config': {
                 'name': self.name + ' Power',
                 'unique_id': self.id + '_power',
+                'availability_topic': f'home/{self.id}/online',
                 'state_topic': f'home/{self.id}/sensor/power',
                 'state_class': 'measurement',
                 'device_class': 'power',
@@ -313,6 +317,7 @@ class SocketDevice(Device):
             'config': {
                 'name': self.name + ' Voltage',
                 'unique_id': self.id + '_voltate',
+                'availability_topic': f'home/{self.id}/online',
                 'state_topic': f'home/{self.id}/sensor/voltage',
                 'state_class': 'measurement',
                 'device_class': 'voltage',
@@ -507,6 +512,12 @@ def read_config() -> List[Device]:
 
     return devices.values()
 
+event = threading.Event()
+
+def handle_signals(sig, frame):
+    event.set()
+
+signal.signal(signal.SIGTERM, handle_signals)
 
 def main():
     '''
@@ -519,6 +530,12 @@ def main():
         t = threading.Thread(target=poll, args=(device,))
         t.start()
 
+    while not event.isSet():
+        try:
+            event.wait(0.75)
+        except KeyboardInterrupt:
+            event.set()
+            break
 
 def on_connect(client, userdata, _1, _2):
     '''
@@ -577,9 +594,12 @@ def poll(device: Device):
             data = device.tuya.receive()
             if data:
                 read_and_publish_status(client, device, data.get('dps'))
+            if event.is_set():
+                break
     finally:
+        client.publish(f'home/{device.id}/online','offline')
         client.loop_stop()
-        logger.info('fin')
+        logger.info('Device %s polling thread exiting', device.id)
 
 
 def read_and_publish_status(client, device: Device, status: dict):
@@ -594,7 +614,7 @@ def read_and_publish_status(client, device: Device, status: dict):
         logger.error('Failed getting device status %s', device.id)
         return
 
-    client.publish('home/{device.id}/online','online')
+    client.publish(f'home/{device.id}/online','online')
 
     # Make all keys integers, for convenience compat with Device.dps integers
     status = {int(k):v for k,v in status.items()}
