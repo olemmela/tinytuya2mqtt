@@ -55,13 +55,14 @@ class Device:
         self.hb_interval = hb_interval
         self.hb_time = time.time() + self.hb_interval
         self.status_interval = status_interval
-        self.status_time = time.time() + self.status_interval
+        self.status_time = time.time()
 
     def connect(self):
         self.tuya = tinytuya.OutletDevice(self.id, self.ip, self.key)
         self.tuya.set_version(3.3)
         self.tuya.set_socketPersistent(True)
         self.tuya.set_socketTimeout(TIME_SLEEP)
+        self.tuya.set_socketRetryLimit(3)
 
     def send_heartbeat(self):
         curtime = time.time()
@@ -585,21 +586,20 @@ def poll(device: Device):
         client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     client.connect(MQTT_BROKER)
     client.loop_start()
-
-    read_and_publish_status(client, device, device.poll_status())
+    client.publish(f'home/{device.id}/online','offline')
 
     try:
         while True:
+            if event.is_set():
+                break
             device.send_heartbeat()
             data = device.tuya.receive()
             if data:
                 read_and_publish_status(client, device, data.get('dps'))
-            if event.is_set():
-                break
     finally:
         client.publish(f'home/{device.id}/online','offline')
         client.loop_stop()
-        logger.info('Device %s polling thread exiting', device.id)
+        logger.info('Device %s polling thread exiting', device.name)
 
 
 def read_and_publish_status(client, device: Device, status: dict):
@@ -611,7 +611,9 @@ def read_and_publish_status(client, device: Device, status: dict):
     '''
     logger.debug('STATUS:  %s', status)
     if not status:
-        logger.error('Failed getting device status %s', device.id)
+        logger.error('Failed getting device status %s', device.name)
+        client.publish(f'home/{device.id}/online','offline')
+        time.sleep(2)
         return
 
     client.publish(f'home/{device.id}/online','online')
