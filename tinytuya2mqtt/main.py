@@ -588,18 +588,21 @@ def poll(device: Device):
     client.loop_start()
     client.publish(f'home/{device.id}/online','offline')
 
-    try:
-        while True:
-            if event.is_set():
-                break
+    while True:
+        if event.is_set():
+            break
+        try:
             device.send_heartbeat()
             data = device.tuya.receive()
             if data:
                 read_and_publish_status(client, device, data.get('dps'))
-    finally:
-        client.publish(f'home/{device.id}/online','offline')
-        client.loop_stop()
-        logger.info('Device %s polling thread exiting', device.name)
+        except Exception as e:
+            client.publish(f'home/{device.id}/online','offline')
+            logger.error('Device %s polling thread got exception %s', device.name, format(e))
+
+    client.publish(f'home/{device.id}/online','offline')
+    client.loop_stop()
+    logger.info('Device %s polling thread exiting', device.name)
 
 
 def read_and_publish_status(client, device: Device, status: dict):
