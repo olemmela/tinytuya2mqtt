@@ -382,6 +382,10 @@ class ClimateDevice(Device):
     def __init__(self, id, config):
         self.manufacturer = "Beok"
         self.model = "Thermostat"
+        if 'resolution' in config:
+            self.resolution = 1/float(config['resolution'])
+        else:
+            self.resolution = 10
         super().__init__(id, config)
 
     def ha_config(self):
@@ -414,7 +418,7 @@ class ClimateDevice(Device):
         # Climate temp
         if msg.topic.endswith('/climate/temperature/command'):
             dps = self.set_temperature
-            val = int(float(msg.payload)*10)
+            val = int(float(msg.payload)*self.resolution)
 
             logger.debug('Setting %s to %s', dps, val)
             self.tuya.set_value(dps, val, True)
@@ -436,9 +440,9 @@ class ClimateDevice(Device):
         if self.action in status:
             msgs.append((f'home/{self.id}/climate/action', 'heating' if int(status[self.action]) else 'off'))
         if self.current_temperature in status:
-            msgs.append((f'home/{self.id}/climate/current_temperature', status[self.current_temperature]/10))
+            msgs.append((f'home/{self.id}/climate/current_temperature', status[self.current_temperature]/self.resolution))
         if self.set_temperature in status:
-            msgs.append((f'home/{self.id}/climate/temperature/state', status[self.set_temperature]/10))
+            msgs.append((f'home/{self.id}/climate/temperature/state', status[self.set_temperature]/self.resolution))
 
         return msgs
 
